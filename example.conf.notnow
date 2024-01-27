@@ -32,7 +32,7 @@ ClusterMatlabRoot = /opt/matlab/R"$MATLAB_VERSION_STRING"
 
 # Location where the MATLAB client stores job and task information.
 #JobStorageLocation = /home/matlabjobs
-#JobStorageLocation = 
+
 # If the client and cluster share a filesystem but the client is running
 # the Windows operating system and the cluster running a Linux operating
 # system, you must specify the JobStorageLocation using a structure by

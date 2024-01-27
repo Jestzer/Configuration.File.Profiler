@@ -8,9 +8,13 @@ tokens = regexp(versionOutput, pattern, 'tokens');
 % Check if any parentheses were found for "version".
 if ~isempty(tokens)
     versionNumber = tokens{1}{1}; % tokens is a cell array of cell arrays. Neat!
-    versionNumber = versionNumber(2:end); % Remove the R since it's often already included.
+    versionNumber = versionNumber(2:end); % Remove the R since it's often already included in configuration files when using this environment variable.
     environmentVariableToSet = 'MATLAB_VERSION_STRING';
     setenv(environmentVariableToSet, versionNumber)
+    versionNumberFloat = str2double(regexprep(versionNumber, '[ab]', ''));
+    if contains(versionNumber, 'b')
+        versionNumberFloat = versionNumberFloat + 0.5;
+    end
 else
     error('MATLAB release number could not be parsed. Exiting.');
 end
@@ -68,7 +72,7 @@ try
     % Set all general cluster profile properties by reading line by line BEFORE [AdditionalProperties] is found.
     while ~feof(fileID)
         line = fgetl(fileID);
-        line = strtrim(line); % Trim whitespace from both ends of the line
+        line = strtrim(line); % Trim whitespace from both ends of the line.
 
         if strcmp(line, '[AdditionalProperties]')
             break; % End general property processing and move onto AdditionalProperties.
@@ -105,7 +109,21 @@ try
                 elseif contains(propertyName, '(Unix)') && isUnix
                     propertyName = strrep(propertyName, '(Unix)', '');
                     propertyName = strtrim(propertyName);
-                elseif contains(propertyName, '(Windows)') || contains(propertyName, '(Unix)')                
+                elseif (strcmp(propertyName, 'JobStorageLocation.windows') && isWindows) || ... % This needs to be changed so the order of appearence in the file doesn't matter.
+                    (strcmp(propertyName, 'JobStorageLocation.unix') && isWindows)
+                 nextLine = fgetl(fileID);
+                 eqIndex = strfind(nextLine, '=');
+                                  
+                 if ~isempty(eqIndex) % Check if the equals sign was found.
+                     propertyValue2 = strtrim(nextLine(eqIndex+1:end));
+            
+                     % Make the struct.
+                     propertyValue = sprintf("struct('windows', '%s', 'unix', '%s')", propertyValue, propertyValue2);
+                 else
+                     error('The second line in JobStorageLocation struct does not contain an equals sign or is incorrectly formatted.');
+                 end
+
+                elseif contains(propertyName, '(Windows)') || contains(propertyName, '(Unix)')
                     continue; % OS does not match, skip this property.
                 end
 
@@ -114,11 +132,11 @@ try
                     c.saveAsProfile(clusterName);
                 elseif contains(propertyName, 'PluginScriptsLocation')
 
-                    if contains(versionNumber, '2017') || contains(versionNumber, '2018') % Change the name in older releases.
+                    if versionNumberFloat >= 2017 && versionNumberFloat < 2019.5 % Change the name in older releases.
                         propertyName = strrep(propertyName, 'PluginScriptsLocation', 'IntegrationScriptsLocation');
                     end
-                elseif strcmp(propertyName, 'JobStorageLocation')
 
+                elseif strcmp(propertyName, 'JobStorageLocation')
                     % Check if the job storage location exists.
                     if ~exist(propertyValue, 'dir')
                         [success, message, ~] = mkdir(propertyValue); % The directory does not exist, attempt to create it.
@@ -143,9 +161,7 @@ try
                     propertyValue = str2double(propertyValue);
                 end
 
-                % You can't actually edit a profile name from the command line. It must be saved as a new profile (which is done at the end.)
-                if ~strcmp(propertyName, 'Name')
-                    % Set the retrieved property name and value on the cluster profile temporarily.
+                if ~strcmp(propertyName, 'Name') % Will error if you try doing this when setting the cluster name.
                     c.(propertyName) = propertyValue;
                 end
 
@@ -153,75 +169,77 @@ try
         end
     end
 
-    frewind(fileID); % Reset the file pointer to the beginning of the file before the second while loop. Otherwise, this whole section is ignored.
+    % There are no AdditionalProperties in R2016b and older.
+    if versionNumberFloat >= 2017
+        frewind(fileID); % Reset the file pointer to the beginning of the file before the second while loop. Otherwise, this whole section is ignored.
+        inAdditionalPropertiesSection = false;
 
-    inAdditionalPropertiesSection = false;
+        % Set all AdditionalProperties by reading line by line after [AdditionalProperties] is found.
+        while ~feof(fileID)
+            line = fgetl(fileID);
+            line = strtrim(line);
 
-    % Set all AdditionalProperties by reading line by line after [AdditionalProperties] is found.
-    while ~feof(fileID)
-        line = fgetl(fileID);
-        line = strtrim(line); % Trim whitespace from both ends of the line
+            if strcmp(line, '[AdditionalProperties]')
+                inAdditionalPropertiesSection = true;
+                continue; % Skip this line since don't need to do anything else with it.
+            end
 
-        if strcmp(line, '[AdditionalProperties]')
-            inAdditionalPropertiesSection = true;
-            continue; % Skip processing this line and move to the next one
-        end
+            % Ignore commented or blank lines.
+            if inAdditionalPropertiesSection && ~startsWith(line, '#') && ~isempty(line)
+                parts = strsplit(line, '=');
+                if numel(parts) == 2
+                    propertyName = strtrim(parts{1});
+                    propertyValue = strtrim(parts{2});
 
-        % Ignore commented or blank lines.
-        if inAdditionalPropertiesSection && ~startsWith(line, '#') && ~isempty(line)
-            parts = strsplit(line, '=');
-            if numel(parts) == 2
-                propertyName = strtrim(parts{1});
-                propertyValue = strtrim(parts{2});
+                    % Remove any double quotation marks from propertyValue.
+                    propertyValue = strrep(propertyValue, '"', '');
 
-                % Remove any double quotation marks from propertyValue.
-                propertyValue = strrep(propertyValue, '"', '');
+                    % Get environment variables when used.
+                    if contains(propertyValue, '$')
+                        pattern = '\$(\w+)';
+                        tokens = regexp(propertyValue, pattern, 'tokens');
 
-                % Get environment variables when used.
-                if contains(propertyValue, '$')
-                    pattern = '\$(\w+)';
-                    tokens = regexp(propertyValue, pattern, 'tokens');
+                        if ~isempty(tokens)
+                            % Extract the first token which should be the environment variable name
+                            envVarName = tokens{1}{1};
+                            envVarValue = getenv(envVarName);
 
-                    if ~isempty(tokens)
-                        % Extract the first token which should be the environment variable name
-                        envVarName = tokens{1}{1};
-                        envVarValue = getenv(envVarName);
-
-                        % Replace the occurrence of the environment variable in the original string
-                        propertyValue = strrep(propertyValue, ['$' envVarName], envVarValue);
+                            % Replace the occurrence of the environment variable in the original string
+                            propertyValue = strrep(propertyValue, ['$' envVarName], envVarValue);
+                        end
                     end
-                end
 
-                % Check for OS-specific properties.
-                if contains(propertyName, '(Windows)') && isWindows
-                    propertyName = strrep(propertyName, '(Windows)', '');
-                    propertyName = strtrim(propertyName);
-                elseif contains(propertyName, '(Unix)') && isUnix
-                    propertyName = strrep(propertyName, '(Unix)', '');
-                    propertyName = strtrim(propertyName);
-                elseif contains(propertyName, '(Windows)') || contains(propertyName, '(Unix)')                
-                    continue; % OS does not match, skip this property.
-                end
+                    % Check for OS-specific properties.
+                    if contains(propertyName, '(Windows)') && isWindows
+                        propertyName = strrep(propertyName, '(Windows)', '');
+                        propertyName = strtrim(propertyName);
+                    elseif contains(propertyName, '(Unix)') && isUnix
+                        propertyName = strrep(propertyName, '(Unix)', '');
+                        propertyName = strtrim(propertyName);
+                    elseif contains(propertyName, '(Windows)') || contains(propertyName, '(Unix)')                
+                        continue; % OS does not match, skip this property.
+                    end
 
-                % Set booleans and doubles correctly.
-                if isempty(propertyValue)
-                    % Do nothing.
-                elseif strcmpi(propertyValue, 'true')
-                    propertyValue = true;
-                elseif strcmpi(propertyValue, 'false')
-                    propertyValue = false;
-                elseif all(isstrprop(propertyValue, 'digit'))
-                    propertyValue = str2double(propertyValue);
-                end
+                    % Set booleans and doubles correctly.
+                    if isempty(propertyValue)
+                        % Do nothing.
+                    elseif strcmpi(propertyValue, 'true')
+                        propertyValue = true;
+                    elseif strcmpi(propertyValue, 'false')
+                        propertyValue = false;
+                    elseif all(isstrprop(propertyValue, 'digit'))
+                        propertyValue = str2double(propertyValue);
+                    end
 
-                % Dynamically set the property on the cluster object
-                c.AdditionalProperties.(propertyName) = propertyValue;
+                    % Dynamically set the property on the cluster object
+                    c.AdditionalProperties.(propertyName) = propertyValue;
+                end
             end
         end
     end
 catch errorMessage
     parallel.internal.ui.MatlabProfileManager.removeProfile(clusterName)
-    error('Error: %s', errorMessage.message)
+    error('%s', errorMessage.message)
 end
 
 saveProfile(c);
