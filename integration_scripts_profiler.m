@@ -110,13 +110,18 @@ try
                     propertyName = strrep(propertyName, '(Unix)', '');
                     propertyName = strtrim(propertyName);
                 elseif (strcmp(propertyName, 'JobStorageLocation.windows') && isWindows) || ... % This needs to be changed so the order of appearence in the file doesn't matter.
-                    (strcmp(propertyName, 'JobStorageLocation.unix') && isWindows)
+                    (strcmp(propertyName, 'JobStorageLocation.unix') && isWindows)                    
                  nextLine = fgetl(fileID);
                  eqIndex = strfind(nextLine, '=');
                                   
                  if ~isempty(eqIndex) % Check if the equals sign was found.
                      propertyValue2 = strtrim(nextLine(eqIndex+1:end));
-            
+
+                     if ~contains(propertyName, "windows")  % Swap values if unix was listed first.
+                        [propertyValue, propertyValue2] = deal(propertyValue2, propertyValue);
+                     end
+                     propertyName = "JobStorageLocation";
+
                      % Make the struct.
                      propertyValue = sprintf("struct('windows', '%s', 'unix', '%s')", propertyValue, propertyValue2);
                  else
@@ -136,7 +141,7 @@ try
                         propertyName = strrep(propertyName, 'PluginScriptsLocation', 'IntegrationScriptsLocation');
                     end
 
-                elseif strcmp(propertyName, 'JobStorageLocation')
+                elseif strcmp(propertyName, 'JobStorageLocation') && ~contains(propertyValue, 'struct')
                     % Check if the job storage location exists.
                     if ~exist(propertyValue, 'dir')
                         [success, message, ~] = mkdir(propertyValue); % The directory does not exist, attempt to create it.
@@ -238,7 +243,9 @@ try
         end
     end
 catch errorMessage
-    parallel.internal.ui.MatlabProfileManager.removeProfile(clusterName)
+    if ~contains(errorMessage.message, "already exists.")
+        parallel.internal.ui.MatlabProfileManager.removeProfile(clusterName)
+    end
     error('%s', errorMessage.message)
 end
 
