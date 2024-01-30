@@ -15,6 +15,11 @@ if ~isempty(tokens)
     if contains(versionNumber, 'b')
         versionNumberFloat = versionNumberFloat + 0.5;
     end
+
+    % The way that MATLAB handles numbers is infuriating.
+    if versionNumberFloat > 2000
+        versionNumberFloat = versionNumberFloat / 1000;
+    end
 else
     error('MATLAB release number could not be parsed. Exiting.');
 end
@@ -115,18 +120,19 @@ try
                  eqIndex = strfind(nextLine, '=');
                                   
                  if ~isempty(eqIndex) % Check if the equals sign was found.
-                     propertyValue2 = strtrim(nextLine(eqIndex+1:end));
+                    propertyValue2 = strtrim(nextLine(eqIndex+1:end));
 
-                     if ~contains(propertyName, "windows")  % Swap values if unix was listed first.
+                    % Swap values if 'windows' is not found in propertyName
+                    if isempty(strfind(lower(propertyName), 'windows'))  % Ignore the readability warning because we want old MATLAB to like us.
                         [propertyValue, propertyValue2] = deal(propertyValue2, propertyValue);
-                     end
-                     propertyName = "JobStorageLocation";
+                    end
+                    propertyName = 'JobStorageLocation';
 
-                     % Make the struct.
-                     propertyValue = sprintf("struct('windows', '%s', 'unix', '%s')", propertyValue, propertyValue2);
-                 else
-                     error('The second line in JobStorageLocation struct does not contain an equals sign or is incorrectly formatted.');
-                 end
+                    % Make the struct.
+                    propertyValue = sprintf('struct(''windows'', ''%s'', ''unix'', ''%s'')', propertyValue, propertyValue2);
+                else
+                    error('The second line in JobStorageLocation struct does not contain an equals sign or is incorrectly formatted.');
+                end
 
                 elseif contains(propertyName, '(Windows)') || contains(propertyName, '(Unix)')
                     continue; % OS does not match, skip this property.
@@ -137,8 +143,10 @@ try
                     c.saveAsProfile(clusterName);
                 elseif contains(propertyName, 'PluginScriptsLocation')
 
-                    if versionNumberFloat >= 2017 && versionNumberFloat < 2019.5 % Change the name in older releases.
+                    if versionNumberFloat >= 2.017 && versionNumberFloat < 2.0195 % Change the name in older releases.
                         propertyName = strrep(propertyName, 'PluginScriptsLocation', 'IntegrationScriptsLocation');
+                    elseif versionNumberFloat < 2.017
+                        continue
                     end
 
                 elseif strcmp(propertyName, 'JobStorageLocation') && ~contains(propertyValue, 'struct')
@@ -155,15 +163,18 @@ try
                     else
                         % The directory already exists.
                     end
-                % Set booleans and doubles correctly.
                 elseif isempty(propertyValue)
-                    % Do nothing.
-                elseif strcmpi(propertyValue, 'true')
+                    % Do nothing because you gave nothing.
+                elseif strcmpi(propertyValue, 'true') % Set booleans and doubles correctly.
                     propertyValue = true;
                 elseif strcmpi(propertyValue, 'false')
                     propertyValue = false;
                 elseif all(isstrprop(propertyValue, 'digit'))
                     propertyValue = str2double(propertyValue);
+                end
+
+                if strcmp(propertyName, 'RequiresOnlineLicensing') && versionNumberFloat < 2.017
+                    propertyName = 'RequiresMathWorksHostedLicensing';
                 end
 
                 if ~strcmp(propertyName, 'Name') % Will error if you try doing this when setting the cluster name.
@@ -175,7 +186,7 @@ try
     end
 
     % There are no AdditionalProperties in R2016b and older.
-    if versionNumberFloat >= 2017
+    if versionNumberFloat >= 2.017
         frewind(fileID); % Reset the file pointer to the beginning of the file before the second while loop. Otherwise, this whole section is ignored.
         inAdditionalPropertiesSection = false;
 
@@ -243,7 +254,7 @@ try
         end
     end
 catch errorMessage
-    if ~contains(errorMessage.message, "already exists.")
+    if isempty(strfind(errorMessage.message, 'already exists.'))
         parallel.internal.ui.MatlabProfileManager.removeProfile(clusterName)
     end
     error('%s', errorMessage.message)
