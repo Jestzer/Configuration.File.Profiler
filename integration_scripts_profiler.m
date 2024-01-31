@@ -147,9 +147,15 @@ try
 
                     if versionNumberFloat >= 2.017 && versionNumberFloat < 2.0195 % Change the name in a certain range of older releases.
                         propertyName = strrep(propertyName, 'PluginScriptsLocation', 'IntegrationScriptsLocation');
-                    elseif versionNumberFloat < 2.017
-                        c.GetJobStateFcn = fullfile(propertyValue, 'GetJobStateFcn.m');
-                        
+                    elseif versionNumberFloat < 2.017 % The pain we used to have to go through.
+                        c.IndependentSubmitFcn = fullfile(propertyValue, 'independentSubmitFcn.m');
+                        c.CommunicatingSubmitFcn = fullfile(propertyValue, 'communicatingSubmitFcn.m');                        
+                        c.GetJobStateFcn = fullfile(propertyValue, 'getJobStateFcn.m');
+                        c.DeleteJobFcn = fullfile(propertyValue, 'deleteJobFcn.m');
+                        c.DeleteTaskFcn = fullfile(propertyValue, 'deleteTaskFcn.m');
+                        c.CancelJobFcn = fullfile(propertyValue, 'cancelJobFcn.m');
+                        c.CancelTaskFcn = fullfile(propertyValue, 'cancelTaskFcn.m');
+
                         continue % Change this to divide the files up, as they used to do this (yuck.)
                     end
 
