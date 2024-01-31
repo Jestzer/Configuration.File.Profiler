@@ -148,6 +148,8 @@ try
                     if versionNumberFloat >= 2.017 && versionNumberFloat < 2.0195 % Change the name in a certain range of older releases.
                         propertyName = strrep(propertyName, 'PluginScriptsLocation', 'IntegrationScriptsLocation');
                     elseif versionNumberFloat < 2.017
+                        c.GetJobStateFcn = fullfile(propertyValue, 'GetJobStateFcn.m');
+                        
                         continue % Change this to divide the files up, as they used to do this (yuck.)
                     end
 
@@ -193,7 +195,7 @@ try
     end
 
     % There are no AdditionalProperties in R2016b and older.
-    if versionNumberFloat < 2.017
+    if versionNumberFloat > 2.017
         frewind(fileID); % Reset the file pointer to the beginning of the file before the second while loop. Otherwise, this whole section is ignored.
         inAdditionalPropertiesSection = false;
 
