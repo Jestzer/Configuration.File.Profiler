@@ -12,7 +12,7 @@ if ~isempty(tokens)
     environmentVariableToSet = 'MATLAB_VERSION_STRING';
     setenv(environmentVariableToSet, versionNumber)
     versionNumberFloat = str2double(regexprep(versionNumber, '[ab]', ''));
-    if contains(versionNumber, 'b')
+    if ~isempty(strfind(versionNumber, 'b'))
         versionNumberFloat = versionNumberFloat + 0.5;
     end
 
@@ -22,6 +22,10 @@ if ~isempty(tokens)
     end
 else
     error('MATLAB release number could not be parsed. Exiting.');
+end
+
+if versionNumberFloat < 2012
+    error('R2012a or newer is required to use this function.')
 end
 
 % Get the full path to the currently running function and any .conf files in it.
@@ -84,8 +88,8 @@ try
         end
 
         % Ignore commented or blank lines.
-        if ~startsWith(line, '#') && ~isempty(line)
-            parts = strsplit(line, '=');
+        if ~isempty(line) && ~strncmp(line, '#', 1)
+            parts = regexp(line, '=', 'split');
             if numel(parts) == 2
                 propertyName = strtrim(parts{1});
                 propertyValue = strtrim(parts{2});
@@ -94,7 +98,7 @@ try
                 propertyValue = strrep(propertyValue, '"', '');
 
                 % Get environment variables when used.
-                if contains(propertyValue, '$')
+                if ~isempty(strfind(propertyValue, '$'))
                     pattern = '\$(\w+)';
                     tokens = regexp(propertyValue, pattern, 'tokens');
 
@@ -108,10 +112,10 @@ try
                 end
 
                 % Check for OS-specific properties.
-                if contains(propertyName, '(Windows)') && ispc
+                if ~isempty(strfind(propertyName, '(Windows)')) && ispc
                     propertyName = strrep(propertyName, '(Windows)', '');
                     propertyName = strtrim(propertyName);
-                elseif contains(propertyName, '(Unix)') && isUnixBased
+                elseif ~isempty(strfind(propertyName, '(Unix)')) && isUnixBased
                     propertyName = strrep(propertyName, '(Unix)', '');
                     propertyName = strtrim(propertyName);
                 elseif (strcmp(propertyName, 'JobStorageLocation.windows') && ispc) || (strcmp(propertyName, 'JobStorageLocation.unix') && ispc)                    
@@ -122,7 +126,7 @@ try
                     propertyValue2 = strtrim(nextLine(eqIndex+1:end));
 
                     % Swap values if 'windows' is not found in propertyName.
-                    if ~contains(lower(propertyName), 'windows')
+                    if ~isempty(strfind(lower(propertyName), 'windows'))
                         [propertyValue, propertyValue2] = deal(propertyValue2, propertyValue);
                     end
 
@@ -135,15 +139,19 @@ try
                     error('The second line in JobStorageLocation struct does not contain an equals sign or is incorrectly formatted.');
                 end
 
-                elseif contains(propertyName, '(Windows)') || contains(propertyName, '(Unix)')
+                elseif ~isempty(strfind(propertyName, '(Windows)')) || ~isempty(strfind(propertyName, '(Unix)'))
                     continue; % OS does not match, skip this property.
                 end
 
                 if strcmp(propertyName, 'Name')
+                    if versionNumberFloat < 2.0165 && ~isempty(strfind(propertyValue, ' ')) % No spaces allowed prior to R2016b.ß
+                        propertyValue = strrep(propertyValue, ' ', '_');
+                    end
+
                     clusterName = propertyValue;
                     c.saveAsProfile(clusterName);
                     continue
-                elseif contains(propertyName, 'PluginScriptsLocation')
+                elseif ~isempty(strfind(propertyName, 'PluginScriptsLocation'))
 
                     if versionNumberFloat >= 2.017 && versionNumberFloat < 2.0195 % Change the name in a certain range of older releases.
                         propertyName = strrep(propertyName, 'PluginScriptsLocation', 'IntegrationScriptsLocation');
@@ -159,7 +167,7 @@ try
                         continue % Change this to divide the files up, as they used to do this (yuck.)
                     end
 
-                elseif strcmp(propertyName, 'JobStorageLocation') && ~contains(propertyValue, 'struct')
+                elseif strcmp(propertyName, 'JobStorageLocation') && ~isempty(strfind(propertyValue, 'struct'))
                     % Check if the job storage location exists.
                     if ~exist(propertyValue, 'dir')
                         [success, message, ~] = mkdir(propertyValue); % The directory does not exist, attempt to create it.
@@ -183,8 +191,10 @@ try
                     propertyValue = str2double(propertyValue);
                 end
 
-                if strcmp(propertyName, 'RequiresOnlineLicensing') && versionNumberFloat < 2.017
+                if strcmp(propertyName, 'RequiresOnlineLicensing') && versionNumberFloat < 2.017 && versionNumberFloat > 2.012
                     propertyName = 'RequiresMathWorksHostedLicensing';
+                elseif strcmp(propertyName, 'RequiresOnlineLicensing') && versionNumberFloat < 2.0125 % You weren't around yet!
+                    continue
                 end
                 
                 % Temporarily store goodies in the cluster object.
@@ -194,9 +204,9 @@ try
     end
 
     % Shared filesystem will be set by the filename, if it isn't set in the file's contents.
-    if contains(lower(confFileName), 'desktop.conf') && HasSharedFilesystem == false
+    if ~isempty(strfind(lower(confFileName), 'desktop.conf')) && HasSharedFilesystem == false
         c.HasSharedFilesystem = false;
-    elseif contains(lower(confFileName), 'cluster.conf') || contains(lower(confFileName), 'remote.conf') || HasSharedFilesystem == true
+    elseif ~isempty(strfind(lower(confFileName), 'cluster.conf')) || ~isempty(strfind(lower(confFileName), 'remote.conf')) || HasSharedFilesystem == true
         c.HasSharedFilesystem = true;
     end
 
@@ -216,14 +226,14 @@ try
             end
 
             % Ignore commented or blank lines.
-            if inAdditionalPropertiesSection && ~startsWith(line, '#') && ~isempty(line)
-                parts = strsplit(line, '=');
+            if inAdditionalPropertiesSection && ~isempty(line) && ~strncmp(line, '#', 1)
+                parts = regexp(line, '=', 'split');
                 if numel(parts) == 2
                     propertyName = strtrim(parts{1});
                     propertyValue = strtrim(parts{2});
                     propertyValue = strrep(propertyValue, '"', '');
 
-                    if contains(propertyValue, '$')
+                    if ~isempty(strfind(propertyValue, '$'))
                         pattern = '\$(\w+)';
                         tokens = regexp(propertyValue, pattern, 'tokens');
 
@@ -235,13 +245,13 @@ try
                     end
 
                     % Check for OS-specific properties.
-                    if contains(propertyName, '(Windows)') && ispc
+                    if ~isempty(strfind(propertyName, '(Windows)')) && ispc
                         propertyName = strrep(propertyName, '(Windows)', '');
                         propertyName = strtrim(propertyName);
-                    elseif contains(propertyName, '(Unix)') && isUnixBased
+                    elseif ~isempty(strfind(propertyName, '(Unix)')) && isUnixBased
                         propertyName = strrep(propertyName, '(Unix)', '');
                         propertyName = strtrim(propertyName);
-                    elseif contains(propertyName, '(Windows)') || contains(propertyName, '(Unix)')                
+                    elseif ~isempty(strfind(propertyName, '(Windows)')) || ~isempty(strfind(propertyName, '(Unix)'))
                         continue;
                     end
 
