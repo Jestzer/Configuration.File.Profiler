@@ -5,3 +5,4 @@ Automatically create a cluster profile for clusters using MATLAB Parallel Server
 - Supports R2012a-R2023b
 - Is developed independently and is no way associated with MathWorks
 - PluginScriptsLocation can be used to point to the individual script paths that need to be specified for R2016b and older
+- Warnings about readability are necessary to make this function work for R2012a-R2016a. Please disregard them.
