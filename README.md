@@ -6,3 +6,11 @@ Automatically create a cluster profile for clusters using MATLAB Parallel Server
 - Is developed independently and is no way associated with MathWorks
 - PluginScriptsLocation can be used to point to the individual script paths that need to be specified for R2016b and older
 - Warnings about readability are necessary to make this function work for R2012a-R2016a. Please disregard them.
+
+# Usage
+- Download the latest release files or clone the repository
+- Setup and edit a configuration file using one of the examples provided (exampleDesktop.conf)
+- Place the configuration file in the same location as the integration_scripts_profiler.m file
+- Run integration_scripts_profiler.m from MATLAB's Command Window
+- Follow any prompts, if they are given
+- You're hopefully then done!
