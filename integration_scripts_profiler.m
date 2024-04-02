@@ -281,4 +281,4 @@ saveProfile(c);
 parallel.defaultClusterProfile(clusterName);
 fclose(fileID);
 
-disp(['Profile cluster successfully created and name: ', clusterName]);
+disp(['Profile cluster successfully created and named as follows: ', clusterName]);
